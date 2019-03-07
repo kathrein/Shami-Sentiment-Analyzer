@@ -9,18 +9,38 @@ Created on Tue Feb 12 12:08:25 2019
 # best Identify langauge code
 
 
+
+
+from __future__ import print_function
+
+import logging
+import numpy as np
+from optparse import OptionParser
+import sys
+from time import time
+import matplotlib.pyplot as plt
+
+#from sklearn.datasets import fetch_20newsgroups
 from sklearn.datasets import load_files
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.feature_extraction.text import HashingVectorizer
+from sklearn.feature_selection import SelectFromModel
+from sklearn.feature_selection import SelectKBest, chi2
+from sklearn.linear_model import RidgeClassifier
 from sklearn.pipeline import Pipeline, FeatureUnion
 from sklearn.svm import LinearSVC
-from sklearn.linear_model import SGDClassifier, RidgeClassifier
-from sklearn import metrics
+from sklearn.linear_model import SGDClassifier
+from sklearn.linear_model import Perceptron
+from sklearn.linear_model import PassiveAggressiveClassifier
 from sklearn.naive_bayes import BernoulliNB, ComplementNB, MultinomialNB
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.neighbors import NearestCentroid
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.utils.extmath import density
+from sklearn import metrics
+from scipy.sparse import hstack
+from sklearn_pandas import DataFrameMapper, cross_val_score
 from sklearn.model_selection import train_test_split
-
-
-
-
 #data_set = load_files('../corpora/Balanced_Shami/train/dialects', encoding = 'utf-8',decode_error='ignore')
 #data_test = load_files('../corpora/Balanced_Shami/test', encoding = 'utf-8',decode_error='ignore')
 #X_train = data_set.data
@@ -29,7 +49,88 @@ from sklearn.model_selection import train_test_split
 #y_test = data_test.target
 
 
-data_set = load_files('../PalSenti/', encoding = 'utf-8',decode_error='ignore')
+# Display progress logs on stdout
+logging.basicConfig(level=logging.INFO,
+                    format='%(asctime)s %(levelname)s %(message)s')
+
+
+# parse commandline arguments
+op = OptionParser()
+op.add_option("--report",
+              action="store_true", dest="print_report",
+              help="Print a detailed classification report.")
+op.add_option("--chi2_select",
+              action="store", type="int", dest="select_chi2",
+              help="Select some number of features using a chi-squared test")
+op.add_option("--confusion_matrix",
+              action="store_true", dest="print_cm",
+              help="Print the confusion matrix.")
+op.add_option("--top10",
+              action="store_true", dest="print_top10",
+              help="Print ten most discriminative terms per class"
+                   " for every classifier.")
+op.add_option("--all_categories",
+              action="store_true", dest="all_categories",
+              help="Whether to use all categories or not.")
+op.add_option("--use_hashing",
+              action="store_true",
+              help="Use a hashing vectorizer.")
+op.add_option("--n_features",
+              action="store", type=int, default=2 ** 16,
+              help="n_features when using the hashing vectorizer.")
+op.add_option("--filtered",
+              action="store_true",
+              help="Remove newsgroup information that is easily overfit: "
+                   "headers, signatures, and quoting.")
+
+
+def is_interactive():
+    return not hasattr(sys.modules['__main__'], '__file__')
+
+
+# work-around for Jupyter notebook and IPython console
+argv = [] if is_interactive() else sys.argv[1:]
+(opts, args) = op.parse_args(argv)
+if len(args) > 0:
+    op.error("this script takes no arguments.")
+    sys.exit(1)
+
+print(__doc__)
+op.print_help()
+print()
+
+
+# #############################################################################
+# Load some categories from the training set
+if opts.all_categories:
+    categories = None
+else:
+    categories = [
+            'pos','neg', 'no' 
+#        'alt.atheism',
+#        'talk.religion.misc',
+#        'comp.graphics',
+#        'sci.space',
+    ]
+
+if opts.filtered:
+    remove = ('headers', 'footers', 'quotes')
+else:
+    remove = ()
+
+print("Loading  dataset for categories:")
+print(categories if categories else "all")
+
+#arb_stopwords = set(nltk.corpus.stopwords.words("arabic"))
+#print(list(arb_stopwords))
+#stop_words = frozenset(arb_stopwords)
+
+
+
+
+
+
+data_set = load_files('../data/PalSenti/', encoding = 'utf-8',decode_error='ignore')
 X_train, X_test, y_train, y_test = train_test_split(data_set.data, data_set.target, test_size=0.2, random_state=42)
 print('data loaded')
 
@@ -42,13 +143,13 @@ def size_mb(docs):
     return sum(len(s.encode('utf-8')) for s in docs) / 1e6
 
 
-data_train_size_mb = size_mb(x_train)
-data_test_size_mb = size_mb(x_test)
+data_train_size_mb = size_mb(X_train)
+data_test_size_mb = size_mb(X_test)
 
 print("%d documents - %0.3fMB (training set)" % (
-    len(x_train), data_train_size_mb))
+    len(X_train), data_train_size_mb))
 print("%d documents - %0.3fMB (test set)" % (
-    len(x_test),data_test_size_mb))
+    len(X_test),data_test_size_mb))
 print("%d categories" % len(target_names))
 print()
 
@@ -75,23 +176,7 @@ X_test = union.transform(X_test)#union.transform(data_test.data)
 
 print("Combined space has", X_features.shape[1], "features")
 
-# this is for lev only
-#svm = SGDClassifier(alpha=0.001, max_iter=50,penalty="l2")
-# this is for high level lev, msa, eg, na
-#svm = MultinomialNB(alpha=0.001) 
-#
-#svm.fit(X_features, y_train)
-##pipeline = Pipeline([("features", union), ("svm", svm)])
-#
-#pred = svm.predict(X_test)
-#score = metrics.accuracy_score(y_test, pred)
-#print("accuracy:   %0.3f" % score)
-#
-#print("classification report:")
-#print(metrics.classification_report(y_test, pred,target_names=target_names))
-#
-#print("confusion matrix:")
-#print(metrics.confusion_matrix(y_test, pred))
+
 
 
 # mapping from integer feature name to original token string
@@ -141,7 +226,7 @@ def benchmark(clf):
 
     score = metrics.accuracy_score(y_test, pred)
     print("accuracy:   %0.3f" % score)
-    l_acc.append(score)
+    #l_acc.append(score)
 #    print(metrics.classification_report(data_test.target, pred,
 #     target_names=data_test.target_names)) 
     opts.print_top10 = False
@@ -256,10 +341,11 @@ plt.subplots_adjust(left=.25)
 plt.subplots_adjust(top=.95)
 plt.subplots_adjust(bottom=.05)
 
-for i, c in zip(indices, clf_names):
+for i, c ,s in zip(indices, clf_names,score):
     plt.text(-.3, i, c)
+    print('{0} {1}: {2}' .format(i,c,s))
 
 plt.show()
 
-for score ,clfname in zip(l_acc,clf_names):
-    print(clfname,"  %0.3f" % score)
+#for score ,clfname in zip(l_acc,clf_names):
+#    print(clfname,"  %0.3f" % score)

@@ -134,7 +134,7 @@ print(categories if categories else "all")
 
 
 
-data_set = load_files('../PalSenti/', encoding = 'utf-8',decode_error='ignore')
+data_set = load_files('../data/PalSenti/', encoding = 'utf-8',decode_error='ignore')
 x_train, x_test, y_train, y_test = train_test_split(data_set.data, data_set.target, test_size=0.2, random_state=42)
 print('data loaded')
 
@@ -159,7 +159,7 @@ print()
 
 # split a training set and a test set
 #y_train, y_test = data_train.target, data_test.target
-l_acc = []
+#l_acc = []
 print("Extracting features from the training data using a sparse vectorizer")
 t0 = time()
 #opts.use_hashing = True
@@ -231,7 +231,7 @@ def benchmark(clf):
 
     score = metrics.accuracy_score(y_test, pred)
     print("accuracy:   %0.3f" % score)
-    l_acc.append(score)
+    #l_acc.append(score)
 #    print(metrics.classification_report(data_test.target, pred,
 #     target_names=data_test.target_names)) 
     opts.print_top10 = True
@@ -341,10 +341,10 @@ plt.subplots_adjust(left=.25)
 plt.subplots_adjust(top=.95)
 plt.subplots_adjust(bottom=.05)
 
-for i, c in zip(indices, clf_names):
+for i, c ,s in zip(indices, clf_names,score):
     plt.text(-.3, i, c)
+    print('{0} {1}: {2}' .format(i,c,s))
 
 plt.show()
 
-for score ,clfname in zip(l_acc,clf_names):
-    print(clfname,"  %0.3f" % score)
+
