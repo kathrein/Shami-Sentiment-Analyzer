@@ -26,7 +26,7 @@ ara_dir = '../data/tweet_cbow_300/'
 
 #'/Users/xabuka/PycharmProjects/measuring_acceptability/python-files/aclImdb' #
 
-input_train, y_train = loading.load_train(data_dir,max_len,a,validation_samples,max_features, Validation = False )
+input_train, y_train = loading.load_train(data_dir,max_len,training_samples,validation_samples,max_features, Validation = False )
 input_test, y_test = loading.load_test(data_dir,max_len,max_features)
 
 
